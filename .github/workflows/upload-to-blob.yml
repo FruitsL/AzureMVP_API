@@ -12,8 +12,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Azure CLI
-        uses: azure/cli@v2
 
       - name: Upload files to Azure Blob Storage
         uses: azure/cli@v2
