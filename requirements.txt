@@ -1,6 +1,8 @@
-python-dotenv
-dotenv
-opencensus-ext-azure
+opencensus
+opencensus-ext-azure==1.0.7
 opencensus-ext-fastapi
+opencensus-ext-logging
+opencensus-ext-threading
 fastapi
 uvicorn
+python-dotenv
