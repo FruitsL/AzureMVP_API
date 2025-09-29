@@ -1,0 +1,29 @@
+name: Upload repo to Azure Blob Storage
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  upload-to-blob:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Azure CLI
+        uses: azure/cli@v2
+
+      - name: Upload files to Azure Blob Storage
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONTAINER: ${{ secrets.AZURE_STORAGE_CONTAINER }}
+        run: |
+          az storage blob upload-batch \
+            --account-name "$AZURE_STORAGE_ACCOUNT" \
+            --account-key "$AZURE_STORAGE_KEY" \
+            --destination "$AZURE_STORAGE_CONTAINER" \
+            --source . \
+            --pattern "*"
