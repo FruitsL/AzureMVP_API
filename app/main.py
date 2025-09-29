@@ -2,26 +2,12 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from datetime import datetime
-
-# Application Insights 연동
-from opencensus.ext.azure.log_exporter import AzureLogHandler
-from opencensus.ext.azure.trace_exporter import AzureExporter
-from opencensus.ext.fastapi.fastapi_middleware import FastAPIMiddleware
-from opencensus.trace.samplers import ProbabilitySampler
 import logging
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
-
-APPINSIGHTS_KEY = os.getenv("APPINSIGHTS_INSTRUMENTATIONKEY", "<YOUR_INSTRUMENTATION_KEY>")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
-app.add_middleware(FastAPIMiddleware, exporter=AzureExporter(connection_string=f"InstrumentationKey={APPINSIGHTS_KEY}"), sampler=ProbabilitySampler(1.0))
-
-# 로그 핸들러 추가
-logger = logging.getLogger(__name__)
-logger.addHandler(AzureLogHandler(connection_string=f"InstrumentationKey={APPINSIGHTS_KEY}"))
 
 @app.post("/now")
 def get_current_time():
