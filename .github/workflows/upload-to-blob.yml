@@ -22,6 +22,10 @@ jobs:
         with:
           inlineScript: |
             for file in $(git diff --name-only HEAD^ HEAD); do
+              # .git 디렉토리만 제외 (.github은 포함)
+              if [[ "$file" == .git/* || "$file" == .git\\* ]]; then
+                continue
+              fi
               if [ -f "$file" ]; then
                 az storage blob upload \
                   --account-name "$AZURE_STORAGE_ACCOUNT" \
