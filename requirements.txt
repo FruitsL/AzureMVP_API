@@ -1,4 +1,5 @@
 python-dotenv
+dotenv
 opencensus-ext-azure
 opencensus-ext-fastapi
 fastapi
