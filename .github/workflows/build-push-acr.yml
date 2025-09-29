@@ -28,3 +28,5 @@ jobs:
           context: .
           push: true
           tags: ${{ secrets.ACR_LOGIN_SERVER }}/azuremvp-api:latest
+          build-args: |
+            APPINSIGHTS_INSTRUMENTATIONKEY=${{ secrets.APPINSIGHTS_INSTRUMENTATIONKEY }}
