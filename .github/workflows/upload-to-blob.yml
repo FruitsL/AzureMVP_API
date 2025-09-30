@@ -145,13 +145,16 @@ jobs:
             echo "Azure Cognitive Search 인덱싱이 시작되었습니다."
 
       - name: Wait for Indexer to Complete
-        if: ${{ secrets.AZURE_SEARCH_SERVICE != '' }}
         uses: azure/cli@v2
         env:
           AZURE_SEARCH_SERVICE: ${{ secrets.AZURE_SEARCH_SERVICE }}
           AZURE_SEARCH_ADMIN_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
         with:
           inlineScript: |
-            echo "인덱서 완료를 기다리는 중..."
-            sleep 30
-            echo "Azure Cognitive Search 인덱싱이 완료되었습니다."
+            if [ -n "$AZURE_SEARCH_SERVICE" ]; then
+              echo "인덱서 완료를 기다리는 중..."
+              sleep 30
+              echo "Azure Cognitive Search 인덱싱이 완료되었습니다."
+            else
+              echo "Azure Search 서비스가 설정되지 않았습니다."
+            fi
