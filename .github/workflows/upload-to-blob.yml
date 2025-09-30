@@ -11,7 +11,22 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # HEAD와 HEAD^ 비교를 위해 최소 2개 커밋 필요
 
+      - name: Get changed files
+        id: changes
+        run: |
+          # 변경된 파일 목록 가져오기 (추가/수정된 파일)
+          CHANGED_FILES=$(git diff --name-only --diff-filter=AM HEAD^ HEAD | grep -v "^\.git/" | tr '\n' ' ')
+          # 삭제된 파일 목록 가져오기
+          DELETED_FILES=$(git diff --name-only --diff-filter=D HEAD^ HEAD | grep -v "^\.git/" | tr '\n' ' ')
+          
+          echo "changed-files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "deleted-files=$DELETED_FILES" >> $GITHUB_OUTPUT
+          
+          echo "변경된 파일: $CHANGED_FILES"
+          echo "삭제된 파일: $DELETED_FILES"
 
       - name: Upload changed files to Azure Blob Storage
         uses: azure/cli@v2
@@ -19,19 +34,12 @@ jobs:
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
           AZURE_STORAGE_CONTAINER: ${{ secrets.AZURE_STORAGE_CONTAINER }}
+          CHANGED_FILES: ${{ steps.changes.outputs.changed-files }}
+          DELETED_FILES: ${{ steps.changes.outputs.deleted-files }}
         with:
           inlineScript: |
-            # 변경된 파일 목록 가져오기 (추가/수정된 파일)
-            CHANGED_FILES=$(git diff --name-only --diff-filter=AM HEAD^ HEAD)
-            # 삭제된 파일 목록 가져오기
-            DELETED_FILES=$(git diff --name-only --diff-filter=D HEAD^ HEAD)
-            
             echo "변경된 파일들을 업로드 중..."
             for file in $CHANGED_FILES; do
-              # .git 디렉토리만 제외 (.github은 포함)
-              if [[ "$file" == .git/* || "$file" == .git\\* ]]; then
-                continue
-              fi
               if [ -f "$file" ]; then
                 echo "업로드: $file"
                 az storage blob upload \
@@ -46,17 +54,15 @@ jobs:
             
             echo "삭제된 파일들을 Storage에서 제거 중..."
             for file in $DELETED_FILES; do
-              # .git 디렉토리만 제외
-              if [[ "$file" == .git/* || "$file" == .git\\* ]]; then
-                continue
+              if [ -n "$file" ]; then
+                echo "삭제: $file"
+                az storage blob delete \
+                  --account-name "$AZURE_STORAGE_ACCOUNT" \
+                  --account-key "$AZURE_STORAGE_KEY" \
+                  --container-name "$AZURE_STORAGE_CONTAINER" \
+                  --name "$file" \
+                  --delete-snapshots include || echo "파일 $file 삭제 실패 (존재하지 않을 수 있음)"
               fi
-              echo "삭제: $file"
-              az storage blob delete \
-                --account-name "$AZURE_STORAGE_ACCOUNT" \
-                --account-key "$AZURE_STORAGE_KEY" \
-                --container-name "$AZURE_STORAGE_CONTAINER" \
-                --name "$file" \
-                --delete-snapshots include || echo "파일 $file 삭제 실패 (존재하지 않을 수 있음)"
             done
             
             echo "Blob Storage 동기화 완료"
