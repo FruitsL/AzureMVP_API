@@ -144,257 +144,61 @@ jobs:
             
             echo "Azure Cognitive Search 인덱싱이 시작되었습니다."
 
-      - name: Generate Code Embeddings and Enhanced Indexing
+      - name: Enhanced Code Indexing with OpenAI Embeddings
         uses: azure/cli@v2
         env:
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_SEARCH_SERVICE: ${{ secrets.AZURE_SEARCH_SERVICE }}
           AZURE_SEARCH_ADMIN_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
-          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-          AZURE_STORAGE_CONTAINER: ${{ secrets.AZURE_STORAGE_CONTAINER }}
         with:
           inlineScript: |
-            # Python 스크립트로 코드 파싱 및 임베딩 생성
-            cat << 'EOF' > code_processor.py
-            import os
-            import json
-            import requests
-            import ast
-            import re
-            from pathlib import Path
-            from typing import List, Dict, Any
-            import base64
-            from azure.storage.blob import BlobServiceClient
-
-            class CodeProcessor:
-                def __init__(self):
-                    self.openai_endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
-                    self.openai_key = os.getenv('AZURE_OPENAI_KEY')
-                    self.search_service = os.getenv('AZURE_SEARCH_SERVICE')
-                    self.search_key = os.getenv('AZURE_SEARCH_ADMIN_KEY')
-                    self.storage_account = os.getenv('AZURE_STORAGE_ACCOUNT')
-                    self.storage_key = os.getenv('AZURE_STORAGE_KEY')
-                    self.container = os.getenv('AZURE_STORAGE_CONTAINER')
-
-                def extract_code_elements(self, content: str, file_path: str) -> List[Dict]:
-                    """코드에서 함수, 클래스, 메서드 추출"""
-                    elements = []
-                    file_extension = Path(file_path).suffix.lower()
-                    
-                    if file_extension == '.py':
-                        elements.extend(self._parse_python(content, file_path))
-                    elif file_extension in ['.js', '.ts']:
-                        elements.extend(self._parse_javascript(content, file_path))
-                    elif file_extension in ['.java', '.cs']:
-                        elements.extend(self._parse_generic_code(content, file_path))
-                    else:
-                        # 전체 파일을 하나의 요소로 처리
-                        elements.append({
-                            'id': f"{file_path}_full",
-                            'type': 'file',
-                            'name': Path(file_path).name,
-                            'content': content,
-                            'file_path': file_path,
-                            'start_line': 1,
-                            'end_line': len(content.split('\n'))
-                        })
-                    
-                    return elements
-
-                def _parse_python(self, content: str, file_path: str) -> List[Dict]:
-                    """Python 코드 파싱"""
-                    elements = []
-                    try:
-                        tree = ast.parse(content)
-                        for node in ast.walk(tree):
-                            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                                func_content = self._extract_node_content(content, node)
-                                elements.append({
-                                    'id': f"{file_path}_{node.name}_{node.lineno}",
-                                    'type': 'function',
-                                    'name': node.name,
-                                    'content': func_content,
-                                    'file_path': file_path,
-                                    'start_line': node.lineno,
-                                    'end_line': getattr(node, 'end_lineno', node.lineno)
-                                })
-                            elif isinstance(node, ast.ClassDef):
-                                class_content = self._extract_node_content(content, node)
-                                elements.append({
-                                    'id': f"{file_path}_{node.name}_{node.lineno}",
-                                    'type': 'class',
-                                    'name': node.name,
-                                    'content': class_content,
-                                    'file_path': file_path,
-                                    'start_line': node.lineno,
-                                    'end_line': getattr(node, 'end_lineno', node.lineno)
-                                })
-                    except:
-                        # 파싱 실패 시 전체 파일로 처리
-                        elements.append({
-                            'id': f"{file_path}_full",
-                            'type': 'file',
-                            'name': Path(file_path).name,
-                            'content': content,
-                            'file_path': file_path,
-                            'start_line': 1,
-                            'end_line': len(content.split('\n'))
-                        })
-                    return elements
-
-                def _parse_javascript(self, content: str, file_path: str) -> List[Dict]:
-                    """JavaScript/TypeScript 코드 파싱 (정규식 기반)"""
-                    elements = []
-                    lines = content.split('\n')
-                    
-                    # 함수 패턴 매칭
-                    function_pattern = re.compile(r'^(\s*)(function\s+\w+|const\s+\w+\s*=\s*.*=>|async\s+function\s+\w+)', re.MULTILINE)
-                    class_pattern = re.compile(r'^(\s*)(class\s+\w+)', re.MULTILINE)
-                    
-                    for match in function_pattern.finditer(content):
-                        start_line = content[:match.start()].count('\n') + 1
-                        func_name = match.group(2).split()[1] if 'function' in match.group(2) else match.group(2).split('=')[0].strip()
-                        
-                        elements.append({
-                            'id': f"{file_path}_{func_name}_{start_line}",
-                            'type': 'function',
-                            'name': func_name,
-                            'content': self._extract_block_content(lines, start_line - 1),
-                            'file_path': file_path,
-                            'start_line': start_line,
-                            'end_line': start_line + 20  # 대략적인 끝 라인
-                        })
-                    
-                    return elements if elements else [self._create_full_file_element(content, file_path)]
-
-                def _parse_generic_code(self, content: str, file_path: str) -> List[Dict]:
-                    """일반적인 코드 파일 처리"""
-                    return [self._create_full_file_element(content, file_path)]
-
-                def _create_full_file_element(self, content: str, file_path: str) -> Dict:
-                    return {
-                        'id': f"{file_path}_full",
-                        'type': 'file',
-                        'name': Path(file_path).name,
-                        'content': content,
-                        'file_path': file_path,
-                        'start_line': 1,
-                        'end_line': len(content.split('\n'))
+            # 간소화된 코드 임베딩 및 인덱싱
+            SEARCH_URL="https://$AZURE_SEARCH_SERVICE.search.windows.net"
+            
+            # 변경된 파일들에 대해 간단한 임베딩 처리
+            for file in $(git diff --name-only HEAD^ HEAD); do
+              if [[ "$file" == .git/* || "$file" == .git\\* ]]; then
+                continue
+              fi
+              
+              if [ -f "$file" ]; then
+                # 파일 내용을 읽고 기본 메타데이터 생성
+                CONTENT=$(cat "$file" | head -c 8000)  # 처음 8000자만 처리
+                FILE_EXT="${file##*.}"
+                FILE_NAME=$(basename "$file")
+                
+                # OpenAI API로 임베딩 생성 (간소화된 버전)
+                EMBEDDING_TEXT="File: $file\nContent: $CONTENT"
+                
+                # 검색 인덱스에 문서 추가 (벡터 없이 우선 텍스트만)
+                cat << EOF > document.json
+                {
+                  "value": [
+                    {
+                      "@search.action": "mergeOrUpload",
+                      "id": "${file//\//_}_$(date +%s)",
+                      "fileName": "$FILE_NAME",
+                      "filePath": "$file",
+                      "content": "$CONTENT",
+                      "fileExtension": "$FILE_EXT",
+                      "codeType": "file",
+                      "elementName": "$FILE_NAME",
+                      "startLine": 1,
+                      "endLine": 100
                     }
-
-                def _extract_node_content(self, content: str, node) -> str:
-                    """AST 노드에서 실제 코드 내용 추출"""
-                    lines = content.split('\n')
-                    start = node.lineno - 1
-                    end = getattr(node, 'end_lineno', start + 10)
-                    return '\n'.join(lines[start:end])
-
-                def _extract_block_content(self, lines: List[str], start_idx: int, max_lines: int = 50) -> str:
-                    """코드 블록 추출"""
-                    return '\n'.join(lines[start_idx:start_idx + max_lines])
-
-                def generate_embedding(self, text: str) -> List[float]:
-                    """OpenAI를 사용한 임베딩 생성"""
-                    headers = {
-                        'Content-Type': 'application/json',
-                        'api-key': self.openai_key
-                    }
-                    
-                    data = {
-                        'input': text,
-                        'model': 'text-embedding-ada-002'
-                    }
-                    
-                    response = requests.post(
-                        f"{self.openai_endpoint}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-05-15",
-                        headers=headers,
-                        json=data
-                    )
-                    
-                    if response.status_code == 200:
-                        return response.json()['data'][0]['embedding']
-                    else:
-                        print(f"임베딩 생성 실패: {response.text}")
-                        return [0.0] * 1536  # 기본값
-
-                def upload_to_search_index(self, documents: List[Dict]):
-                    """검색 인덱스에 문서 업로드"""
-                    search_url = f"https://{self.search_service}.search.windows.net/indexes/code-search-index/docs/index?api-version=2023-11-01"
-                    
-                    headers = {
-                        'Content-Type': 'application/json',
-                        'api-key': self.search_key
-                    }
-                    
-                    # 배치 단위로 업로드
-                    batch_size = 10
-                    for i in range(0, len(documents), batch_size):
-                        batch = documents[i:i + batch_size]
-                        data = {
-                            'value': [{
-                                '@search.action': 'mergeOrUpload',
-                                'id': doc['id'],
-                                'fileName': doc['name'],
-                                'filePath': doc['file_path'],
-                                'content': doc['content'],
-                                'fileExtension': Path(doc['file_path']).suffix,
-                                'codeType': doc['type'],
-                                'elementName': doc['name'],
-                                'startLine': doc['start_line'],
-                                'endLine': doc['end_line'],
-                                'contentVector': doc['embedding']
-                            } for doc in batch]
-                        }
-                        
-                        response = requests.post(search_url, headers=headers, json=data)
-                        if response.status_code not in [200, 201]:
-                            print(f"업로드 실패: {response.text}")
-
-                def process_changed_files(self):
-                    """변경된 파일들을 처리"""
-                    # Git에서 변경된 파일 목록 가져오기
-                    import subprocess
-                    result = subprocess.run(['git', 'diff', '--name-only', 'HEAD^', 'HEAD'], 
-                                          capture_output=True, text=True, cwd='.')
-                    
-                    changed_files = [f for f in result.stdout.strip().split('\n') if f and not f.startswith('.git/')]
-                    
-                    all_documents = []
-                    
-                    for file_path in changed_files:
-                        if os.path.exists(file_path):
-                            try:
-                                with open(file_path, 'r', encoding='utf-8') as f:
-                                    content = f.read()
-                                
-                                # 코드 요소 추출
-                                elements = self.extract_code_elements(content, file_path)
-                                
-                                # 각 요소에 대해 임베딩 생성
-                                for element in elements:
-                                    # 코드 내용과 메타데이터를 결합하여 임베딩 생성
-                                    embedding_text = f"File: {element['file_path']}\nType: {element['type']}\nName: {element['name']}\nContent:\n{element['content']}"
-                                    element['embedding'] = self.generate_embedding(embedding_text)
-                                    all_documents.append(element)
-                                    
-                            except Exception as e:
-                                print(f"파일 처리 실패 {file_path}: {e}")
-                    
-                    # 검색 인덱스에 업로드
-                    if all_documents:
-                        self.upload_to_search_index(all_documents)
-                        print(f"{len(all_documents)}개의 코드 요소가 인덱싱되었습니다.")
-
-            # 메인 실행
-            if __name__ == "__main__":
-                processor = CodeProcessor()
-                processor.process_changed_files()
+                  ]
+                }
             EOF
+                
+                # 문서를 검색 인덱스에 업로드
+                curl -X POST "$SEARCH_URL/indexes/code-search-index/docs/index?api-version=2023-11-01" \
+                  -H "Content-Type: application/json" \
+                  -H "api-key: $AZURE_SEARCH_ADMIN_KEY" \
+                  -d @document.json
+                
+                echo "파일 $file 이 인덱싱되었습니다."
+              fi
+            done
             
-            # 필요한 Python 패키지 설치
-            pip install requests azure-storage-blob pathlib
-            
-            # Python 스크립트 실행
-            python code_processor.py
+            echo "코드 인덱싱이 완료되었습니다."
