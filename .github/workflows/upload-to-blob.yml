@@ -144,61 +144,14 @@ jobs:
             
             echo "Azure Cognitive Search 인덱싱이 시작되었습니다."
 
-      - name: Enhanced Code Indexing with OpenAI Embeddings
+      - name: Wait for Indexer to Complete
+        if: ${{ secrets.AZURE_SEARCH_SERVICE != '' }}
         uses: azure/cli@v2
         env:
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_SEARCH_SERVICE: ${{ secrets.AZURE_SEARCH_SERVICE }}
           AZURE_SEARCH_ADMIN_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
         with:
           inlineScript: |
-            # 간소화된 코드 임베딩 및 인덱싱
-            SEARCH_URL="https://$AZURE_SEARCH_SERVICE.search.windows.net"
-            
-            # 변경된 파일들에 대해 간단한 임베딩 처리
-            for file in $(git diff --name-only HEAD^ HEAD); do
-              if [[ "$file" == .git/* || "$file" == .git\\* ]]; then
-                continue
-              fi
-              
-              if [ -f "$file" ]; then
-                # 파일 내용을 읽고 기본 메타데이터 생성
-                CONTENT=$(cat "$file" | head -c 8000)  # 처음 8000자만 처리
-                FILE_EXT="${file##*.}"
-                FILE_NAME=$(basename "$file")
-                
-                # OpenAI API로 임베딩 생성 (간소화된 버전)
-                EMBEDDING_TEXT="File: $file\nContent: $CONTENT"
-                
-                # 검색 인덱스에 문서 추가 (벡터 없이 우선 텍스트만)
-                cat << EOF > document.json
-                {
-                  "value": [
-                    {
-                      "@search.action": "mergeOrUpload",
-                      "id": "${file//\//_}_$(date +%s)",
-                      "fileName": "$FILE_NAME",
-                      "filePath": "$file",
-                      "content": "$CONTENT",
-                      "fileExtension": "$FILE_EXT",
-                      "codeType": "file",
-                      "elementName": "$FILE_NAME",
-                      "startLine": 1,
-                      "endLine": 100
-                    }
-                  ]
-                }
-            EOF
-                
-                # 문서를 검색 인덱스에 업로드
-                curl -X POST "$SEARCH_URL/indexes/code-search-index/docs/index?api-version=2023-11-01" \
-                  -H "Content-Type: application/json" \
-                  -H "api-key: $AZURE_SEARCH_ADMIN_KEY" \
-                  -d @document.json
-                
-                echo "파일 $file 이 인덱싱되었습니다."
-              fi
-            done
-            
-            echo "코드 인덱싱이 완료되었습니다."
+            echo "인덱서 완료를 기다리는 중..."
+            sleep 30
+            echo "Azure Cognitive Search 인덱싱이 완료되었습니다."

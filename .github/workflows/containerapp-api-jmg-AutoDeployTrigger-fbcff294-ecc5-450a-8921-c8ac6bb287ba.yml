@@ -1,17 +1,17 @@
 name: Trigger auto deployment for containerapp-api-jmg
 
-# When this action will be executed
-on:
-  # Automatically trigger it when detected changes in repo
-  push:
-    branches: 
-      [ main ]
-    paths:
-    - '**'
-    - '.github/workflows/containerapp-api-jmg-AutoDeployTrigger-fbcff294-ecc5-450a-8921-c8ac6bb287ba.yml'
-
-  # Allow manual trigger 
-  workflow_dispatch:      
+# When this action will be executed (자동 배포 비활성화)
+# on:
+#   # Automatically trigger it when detected changes in repo
+#   push:
+#     branches: 
+#       [ main ]
+#     paths:
+#     - '**'
+#     - '.github/workflows/containerapp-api-jmg-AutoDeployTrigger-fbcff294-ecc5-450a-8921-c8ac6bb287ba.yml'
+#
+#   # Allow manual trigger 
+#   workflow_dispatch:      
 
 jobs:
   build-and-deploy:
