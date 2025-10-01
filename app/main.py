@@ -34,7 +34,7 @@ else:
 @app.post("/now")
 def get_current_time():
     logger.info("/now endpoint called")
-    return {"current_time": datetime.now().isoformat()}
+    return {"time": datetime.now().isoformat()}
 
 class AddParams(BaseModel):
     param1: int
